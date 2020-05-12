@@ -9,6 +9,8 @@
 --			Error corrections and added download capabilities
 -- v 0.4 beta 3:	2020-04-05			Author: Roland Oberle
 --			Error corrections and .xml generation and background cleaning
+-- v 0.4 beta 4:	2020-04-05			Author: BPanther
+--			fix m3u8 play and download as mp4
 --
 N = neutrino(0, 0, SCREEN.X_RES, SCREEN.Y_RES)
 -- check lua api version
