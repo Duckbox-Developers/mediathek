@@ -22,7 +22,7 @@ function initVars()
 	end
 	pluginVersion	= tostring(pluginVersionMajor) .. '.' .. tostring(pluginVersionMinor) .. pvbTmp	-- no NLS
 
-	pluginName	= 'Neutrino Mediathek (DDT)'	-- no NLS
+	pluginName	= 'Neutrino Mediathek (DDT-Version)'	-- no NLS
 
 
 	noCacheFiles	= false

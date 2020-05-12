@@ -9,7 +9,7 @@ function getVersionInfo()
 	local vInfo = string.format(l.formatVersion, pluginVersion, j_table.entry[1].version, vdate, j_table.entry[1].progname, j_table.entry[1].progversion,
 			j_table.entry[1].api, j_table.entry[1].apiversion, j_table.entry[1].mvversion, j_table.entry[1].mventrys, mvdate)
 
-	messagebox.exec{title=l.versionHeader .. ' ' .. pluginName, text=vInfo, buttons={ 'ok' } }	-- no NLS
+	messagebox.exec{title=l.versionHeader .. ' ' .. pluginName .. '   ', text=vInfo, buttons={ 'ok' } }	-- no NLS
 end -- function getVersionInfo
 
 function paintMainMenu(space, frameColor, textColor, info, count)
