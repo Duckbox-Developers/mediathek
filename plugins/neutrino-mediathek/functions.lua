@@ -228,7 +228,8 @@ function downloadMovie(url, channel, title, description, theme, duration, date, 
 				(r >= 'a' and r <= 'z') or	-- no NLS
 				(r >= '0' and r <= '9') or	-- no NLS
 				r == '.' or r == ',' or r == ':' or r == ';' or	-- no NLS
-				r == '-' or r == '(' or r == ')' or r == '?' or r == '!') then	-- no NLS
+--				r == '-' or r == '(' or r == ')' or r == '?' or r == '!') then	-- no NLS
+				r == '-' or r == '?' or r == '!') then	-- no NLS -- () removed, because download problems [BP]
 				t = t .. r
 			else
 				t = t .. '_'	-- no NLS
