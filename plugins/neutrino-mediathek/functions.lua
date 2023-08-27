@@ -263,6 +263,9 @@ function downloadMovie(url, channel, title, description, theme, duration, date, 
 			local wgetCMD = 'wget --continue --no-check-certificate --user-agent=' .. user_agent2 .. ' -O \"' .. fileMP4 .. '\"  \"' .. url .. '\"'	-- no NLS
 			os.execute(wgetCMD)
 		elseif  (string.sub(url, -5) == '.m3u8') then	-- no NLS
+			local bmproc = assert(io.popen("cat /proc/stb/info/model"))
+			local boxmodel = bmproc:read('*line')
+			bmproc:close()
 			local date4Name = string.sub(date, 7, 10) .. string.sub(date, 4, 5) .. string.sub(date, 1, 2)
 			local time4Name = string.sub(time, 1,  2) .. string.sub(time, 4, 5) .. '00'	-- no NLS
 			local filePathNameWOExt = conf.downloadPath .. '/' .. validName(channel) .. '_' .. validName(title) .. '_' .. date4Name .. '_' .. time4Name	-- no NLS
@@ -274,7 +277,12 @@ function downloadMovie(url, channel, title, description, theme, duration, date, 
 			local durationInMinutes = tostring(tonumber(string.sub(duration, 1, 2)) * 60 + tonumber(string.sub(duration, 4, 5)) + 1)
 			local tagsXML = constructXMLFile(channel, title, description, theme, durationInMinutes, date, time, conf.downloadQuality)
 			os.execute('echo \'' .. tagsXML .. '\' > ' .. fileXML)
-			local wgetCMD = 'ffmpeg -y -user-agent \"Mozilla/5.0\" -i \"' .. url.. '\" -bsf:a aac_adtstoasc -vcodec copy -c copy \"' .. fileMP4 .. '\"'
+			local wgetCMD = ""
+			if boxmodel == "ufs910" or boxmodel == "ufs922" then
+				wgetCMD = 'ffmpeg -y -user-agent \"Mozilla/5.0\" -i \"' .. url.. '\" -bsf:a aac_adtstoasc -vcodec copy -c copy \"' .. fileMP4 .. '\"'
+			else
+				wgetCMD = 'ffmpeg -y -user_agent \"Mozilla/5.0\" -i \"' .. url.. '\" -bsf:a aac_adtstoasc -vcodec copy -c copy \"' .. fileMP4 .. '\"'
+			end
 			os.execute(wgetCMD)
 		else
 			paintAnInfoBoxAndWait(l.statusDLNot, WHERE.CENTER, conf.guiTimeMsg)
