@@ -642,7 +642,7 @@ sortModeLabels = {
 	title_asc = function() return l.menuSortTitleAsc end,
 	title_desc = function() return l.menuSortTitleDesc end,
 	duration_desc = function() return l.menuSortDurationDesc end,
-	duration_asc = function() return l.menuSortDurationAsc end,
+	duration_asc = function() return l.menuSortDurationAsc end
 }
 
 sortModeOrder = {
@@ -657,7 +657,7 @@ sortModeOrder = {
 geoModeLabels = {
 	all = function() return l.geoFilterAll end,
 	no_geo = function() return l.geoFilterNoGeo end,
-	only_geo = function() return l.geoFilterOnlyGeo end,
+	only_geo = function() return l.geoFilterOnlyGeo end
 }
 
 geoModeOrder = {'all', 'no_geo', 'only_geo'}
@@ -665,7 +665,7 @@ geoModeOrder = {'all', 'no_geo', 'only_geo'}
 qualityModeLabels = {
 	all = function() return l.qualityFilterAll end,
 	require_hd = function() return l.qualityFilterHD end,
-	require_sd = function() return l.qualityFilterSD end,
+	require_sd = function() return l.qualityFilterSD end
 }
 
 qualityModeOrder = {'all', 'require_hd', 'require_sd'}
