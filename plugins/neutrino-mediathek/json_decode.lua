@@ -1,3 +1,14 @@
+local function logCurlRequest(url, file, post, mode)
+	local postPreview = ''
+	if post ~= nil then
+		postPreview = tostring(post)
+		if #postPreview > 200 then
+			postPreview = postPreview:sub(1, 200) .. '…'
+		end
+	end
+	H.printf('[neutrino-mediathek] mode=%s url=%s file=%s post=%s', tostring(mode), tostring(url), tostring(file), postPreview)
+end
+
 function getJsonData2(url, file, post, mode)
 	local box = nil
 	local data = nil
@@ -10,25 +21,30 @@ function getJsonData2(url, file, post, mode)
 		if (H.fileExist(data) == true) then dataExist = true end
 	end
 	if ((dataExist == false) or (noCacheFiles == true)) then
+		logCurlRequest(url, data, post, mode)
+		local ret = 1
 		if ((mode > queryMode_None) and (mode < queryMode_beginPOSTmode)) then
-			box = curlDownload(   url, data, nil,      false,  false, true)
+			box, ret = curlDownload(url, data, nil, false, false, true)
 		end
-		if (mode > queryMode_beginPOSTmode) then
-			box = curlDownload(   url, data, post,     false,  false, false)
+		if (ret ~= CURL.OK and (mode > queryMode_beginPOSTmode)) then
+			box, ret = curlDownload(url, data, post, false, false, false)
+		end
+		if ret ~= CURL.OK then
+			G.hideInfoBox(box)
+			return nil, 'download_failed'
 		end
 	end
 
-	local fp, s
-	fp = io.open(data, 'r')	-- no NLS
+	local fp = io.open(data, 'r')
 	if fp == nil then
 		G.hideInfoBox(box)
-		error('Error connecting to database server.')	-- no NLS
+		return nil, 'fopen_failed'
 	end
-	s = fp:read('*a')	-- no NLS
+	local s = fp:read('*a')
 	fp:close()
 	G.hideInfoBox(box)
-	return s
-end -- function getJsonData2
+	return s, nil
+end
 
 function getJsonData(url, file)
 	local box = nil
@@ -45,35 +61,42 @@ function getJsonData(url, file)
 	end
 
 	local fp, s
-	fp = io.open(data, 'r')	-- no NLS
+	fp = io.open(data, 'r')
 	if fp == nil then
 		G.hideInfoBox(box)
-		error('Error connecting to database server.')	-- no NLS
+		error('Error connecting to database server.')
 	end
-	s = fp:read('*a')	-- no NLS
+	s = fp:read('*a')
 	fp:close()
 	G.hideInfoBox(box)
 	return s
 end
 
 function checkJsonError(tab)
+	if not tab or tab.error == nil then
+		return false
+	end
 	if tab.error > 0 then
 --		paintAnInfoBoxAndWait(tab.entry .. "\nAbort...", WHERE.CENTER, conf.guiTimeMsg)
-		H.printf('Error: %s', tab.entry)	-- no NLS
-		messagebox.exec{title='Error', text=tab.entry, buttons={ 'ok' } }	-- no NLS
+		H.printf('Error: %s', tab.entry)
+		messagebox.exec{title='Error', text=tab.entry, buttons={ 'ok' } }
 		return false
 	end
 	return true
-end -- function checkJsonError
+end
 
 function decodeJson(data)
 	local s = H.trim(data)
 	local x = s.sub(s, 1, 1)
-	if x ~= '{' and x ~= '[' then	-- no NLS
-		local box = G.paintInfoBox('Error parsing json data.')	-- no NLS
+	if x ~= '{' and x ~= '[' then
+		local box = G.paintInfoBox('Error parsing json data.')
 		P.sleep(4)
 		G.hideInfoBox(box)
-		return nil
+		return nil, 'json_invalid'
 	end
-	return J:decode(s)
-end -- function decodeJson
+	local ok, result = pcall(J.decode, J, s)
+	if not ok then
+		return nil, 'json_decode_failed'
+	end
+	return result, nil
+end

@@ -1,90 +1,105 @@
-EXT_X_STREAM_INF	= '#EXT-X-STREAM-INF:'	-- no NLS
+EXT_X_STREAM_INF = '#EXT%-X%-STREAM%-INF%:'
+EXT_X_MEDIA = '#EXT%-X%-MEDIA%:'
+local languages = {"de", "deu"}
+
+-- Helper function to check if a value exists in a table
+local function is_in_list(value, list)
+    for _, v in ipairs(list) do
+        if v == value then
+            return true
+        end
+    end
+    return false
+end
 
 function parse_m3u8Data(url, parse_mode)
-	box = downloadFile(url, m3u8Data, false, user_agent2)
+	local box = downloadFile(url, m3u8Data, false, user_agent2)
 
 	local streamInfo = {}
-	local fp, s
-	fp = io.open(m3u8Data, 'r')	-- no NLS
-	if fp == nil then
+	local fp = io.open(m3u8Data, "r")
+	if not fp then
 		G.hideInfoBox(box)
-		error('Error connecting URL.')	-- no NLS
+		error("Error connecting URL.")
 	end
-	local count = 1
+
+	local current_stream = nil
+	local audio_url = nil
+	local P = require 'posix'
+	local base_url = P.dirname(url)
+
+	-- A table to store the audio URIs found
+	local audio_uris = {}
+
 	for line in fp:lines() do
-		line = H.trim(line)
-		local found = M:strFind(line, EXT_X_STREAM_INF)
-		if (found ~= nil) then
-			local a, b, c, _pos
-			local bandwidth = 0
-			local resolution = '-'	-- no NLS
-			local codec = {}
-			a, b, bandwidth, resolution, c = string.find(line, 'BANDWIDTH=(.*),RESOLUTION=(.*),CODECS=(.*)')	-- no NLS
-			if (a == nil) then
-				bandwidth = 0
-				resolution = '-'	-- no NLS
-				a, b, bandwidth, c, resolution = string.find(line, 'BANDWIDTH=(.*),CODECS=(.*),RESOLUTION=(.*)')	-- no NLS
-				if resolution ~= nil then
-					_pos = M:strFind(resolution, ',CLOSED-CAPTIONS=')	-- no NLS
-					if (_pos ~= nil) then
-						resolution = M:strSub(resolution, 0, _pos)
+		line = line:gsub("[\n\r]", "")
+
+		-- find Stream-Information
+		if line:find(EXT_X_STREAM_INF) then
+			current_stream = {}
+			for key, value in line:gmatch("([%w%-]+)=([^,]+)") do
+				if key == "BANDWIDTH" then
+					current_stream.bandwidth = tonumber(value)
+				elseif key == "RESOLUTION" then
+					current_stream.resolution = value
+				elseif key == "CODECS" then
+					value = value:gsub('"', "")  -- Entfernen der Anführungszeichen
+					current_stream.codec = H.split(value, ",")
+				end
+			end
+			if not current_stream.bandwidth then
+				current_stream.bandwidth = 0
+			end
+			if not current_stream.resolution then
+				current_stream.resolution = "-"
+			end
+		elseif line:find(EXT_X_MEDIA) then
+			-- Check if the media line contains the desired audio language
+			local is_audio = false
+			local is_language = false
+			local is_default = false
+			local temp_audio_url = nil
+
+			for key, value in line:gmatch("([%w%-]+)=([^,]+)")  do
+				-- Handling values with or without quotes
+				value = value:gsub('"', "")
+
+				if key == "TYPE" and value == "AUDIO" then
+					is_audio = true
+				elseif is_audio and key == "LANGUAGE" then
+					if is_in_list(value, languages) then
+						is_language = true
 					end
+				elseif is_audio and is_language and key == "DEFAULT" and value == "YES" then
+					is_default = true
+				elseif is_audio and is_language and is_default and key == "URI" then
+					temp_audio_url = value
 				end
 			end
-			if (a == nil) then
-				-- oklivetv for orf/srf
-				bandwidth = 0
-				resolution = '-'	-- no NLS
-				a, b, bandwidth, resolution = string.find(line, 'BANDWIDTH=(.*),RESOLUTION=(.*)')	-- no NLS
-			end
-			if (a == nil) then
-				bandwidth = 0
-				resolution = '-'	-- no NLS
-				a, b, bandwidth = string.find(line, 'BANDWIDTH=(.*)')	-- no NLS
-			end
-			if c ~= nil then
-				c = string.gsub(c, '"', '')	-- no NLS
-				codec = H.split(c, ',')	-- no NLS
-				local i
-				for i=1, #codec do
-					codec[i] = H.trim(codec[i])
+			-- Store the URI in the audio_uris table, ensuring it is unique
+			if temp_audio_url then
+				if not temp_audio_url:find("^http") and not temp_audio_url:find("^rtmp") then
+					temp_audio_url = base_url .. "/" .. temp_audio_url
 				end
-			end
-			if (count > 1) then
-				if (streamInfo[count-1]['bandwidth'] == tonumber(bandwidth)) then
-					count = count - 1
-				end
-			end
-			streamInfo[count]		= {}
-			streamInfo[count]['bandwidth']	= tonumber(bandwidth)
-			streamInfo[count]['resolution']	= resolution
-			streamInfo[count]['codec']	= {}
-			streamInfo[count]['codec']	= codec
-			count = count + 1
-		else
-			if ((count > 1) and (#line > 2)) then
-				-- url
-				if (parse_mode == 1) then
-					local found = M:strFind(line, 'http')	-- no NLS
-					if (found == nil) then
-						found = M:strFind(line, 'rtmp')	-- no NLS
-					end
-					if (found == nil or (found ~= nil and found ~= 0)) then
-						line = P.dirname(url) .. '/' .. line	-- no NLS
-					end
-					streamInfo[count-1]['url'] = line
-				elseif (parse_mode == 2) then
-					streamInfo[count-1]['url'] = url
-				end
+				audio_uris.audio = temp_audio_url
 			end
 
+		elseif current_stream and #line > 2 then
+			-- add URL to Stream-Info
+			if not line:find("^http") and not line:find("^rtmp") then
+				line = base_url .. "/" .. line
+			end
+			current_stream.url = line
+
+			table.insert(streamInfo, current_stream)
+			current_stream = nil -- reset stream
 		end
 	end
+	table.insert(streamInfo, audio_uris)
 
 	fp:close()
 	G.hideInfoBox(box)
 	return streamInfo
-end -- function parse_m3u8Data
+end
 
 function get_m3u8url(url, parse_mode)
 	local ret = {}
@@ -92,8 +107,9 @@ function get_m3u8url(url, parse_mode)
 
 	if (#si < 1) then
 		ret['url']           = url
-		ret['bandwidth']     = '-'	-- no NLS
-		ret['resolution']    = '-'	-- no NLS
+		ret['url2']          = ""
+		ret['bandwidth']     = '-'
+		ret['resolution']    = '-'
 		return ret
 	end
 
@@ -140,16 +156,21 @@ function get_m3u8url(url, parse_mode)
 			end
 		end
 	end
+	for i=1, #si do
+		if si[i]['audio'] then
+			ret['url2'] = si[i]['audio']
+		end
+	end
 
---	H.tprint(si)
---	H.printf("minBW: %d, maxBW: %d, tmpBW: %d", minBW, maxBW, tmpBW)
+	--H.tprint(si)
+	H.printf("minBW: %d, maxBW: %d, tmpBW: %d", minBW, maxBW, tmpBW)
 
-	if (conf.streamQuality == 'max') then	-- no NLS
+	if (conf.streamQuality == 'max') then
 		-- max
 		ret['url']		= maxUrl
 		ret['bandwidth']	= maxBW
 		ret['resolution']	= maxRes
-	elseif (conf.streamQuality == 'normal') then	-- no NLS
+	elseif (conf.streamQuality == 'normal') then
 		-- normal
 		ret['url']		= xUrl
 		ret['bandwidth']	= xBW
@@ -163,4 +184,4 @@ function get_m3u8url(url, parse_mode)
 	ret['qual'] = conf.streamQuality
 
 	return ret
-end -- function get_m3u8url
+end

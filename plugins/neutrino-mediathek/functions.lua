@@ -7,30 +7,78 @@ function checkKillKey(msg)
 		M:postMsg(POSTMSG.STANDBY_ON)
 		forcePluginExit = true
 	end
-end -- function checkKillKey
+end
 
 function killPlugin(id)
-	if (id == 'standby') then	-- no NLS
+	if (id == 'standby') then
 		M:postMsg(POSTMSG.STANDBY_ON)
 	end
 	forcePluginExit = true
 	menuRet = MENU_RETURN.EXIT_ALL
 	return menuRet
-end -- function killPlugin
+end
 
 function addKillKey(menu)
-	menu:addKey{directkey=RC.tv,		id='tv',	action='killPlugin'}	-- no NLS
-	menu:addKey{directkey=RC.radio,		id='radio',	action='killPlugin'}	-- no NLS
-	menu:addKey{directkey=RC.standby,	id='standby',	action='killPlugin'}	-- no NLS
-end -- function addKillKey
+	menu:addKey{directkey=RC.tv,		id='tv',	action='killPlugin'}
+	menu:addKey{directkey=RC.radio,		id='radio',	action='killPlugin'}
+	menu:addKey{directkey=RC.standby,	id='standby',	action='killPlugin'}
+end
+
+function resolveIconRef(ref)
+	if type(ref) == 'table' and ref.__icon_name then
+		local icon = _G[ref.__icon_name]
+		if type(icon) == 'string' then
+			if icon == '' or H.fileExist(icon) ~= true then
+				return nil
+			end
+		end
+		return icon
+	end
+	return ref
+end
+
+function loadJsonResponse(cacheKey, url, mode, postData)
+	local dataFile = createCacheFileName(cacheKey, 'json')
+	local s, err = getJsonData2(url, dataFile, postData, mode)
+	if not s then
+		messagebox.exec{title=pluginName, text=l.networkError, buttons={'ok'}}
+		return nil, 'network'
+	end
+	local j_table
+	j_table, err = decodeJson(s)
+	if not j_table then
+		messagebox.exec{title=pluginName, text=l.jsonError, buttons={'ok'}}
+		os.execute('rm -f ' .. dataFile)
+		return nil, 'json'
+	end
+	if checkJsonError(j_table) == false then
+		os.execute('rm -f ' .. dataFile)
+		if j_table.err == 2 then
+			return j_table, 'nodata'
+		end
+		return nil, 'api'
+	end
+	return j_table, nil
+end
+
+local function generate_sid(length)
+	math.randomseed(os.time())
+	local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	local sid = {}
+	for i = 1, length do
+		local rand_index = math.random(1, #chars)
+		sid[i] = chars:sub(rand_index, rand_index)
+	end
+	return table.concat(sid)
+end
 
 function curlDownload(url, file, postData, hideBox, _ua, uriDecode)
 	return downloadFileInternal(url, file, hideBox, _ua, postData, uriDecode)
-end -- function curlDownload
+end
 
 function downloadFile(url, file, hideBox, _ua)
 	return downloadFileInternal(url, file, hideBox, _ua, nil, nil)
-end -- function downloadFile
+end
 
 function downloadFileInternal(url, file, hideBox, _ua, postData_, uriDecode)
 	local ua = user_agent
@@ -45,27 +93,27 @@ function downloadFileInternal(url, file, hideBox, _ua, postData_, uriDecode)
 	end
 
 	local v4 = false
-	if (conf.networkIPV4Only == 'on') then	-- no NLS
+	if (conf.networkIPV4Only == 'on') then
 		v4 = true
 	end
 	local s  = true
-	if (conf.networkDlSilent == 'on') then	-- no NLS
+	if (conf.networkDlSilent == 'on') then
 		s  = false
 	end
 	local v = false
-	if (conf.networkDlVerbose == 'on') then	-- no NLS
+	if (conf.networkDlVerbose == 'on') then
 		v = true
 	end
 dlDebug = true
 	if (dlDebug == true) then
-		H.printf( '\n' ..	-- no NLS
-			'   remote url: %s\n' ..	-- no NLS
-			'         file: %s\n' ..	-- no NLS
-			'     postData: %s\n' ..	-- no NLS
-			'     ipv4only: %s\n' ..	-- no NLS
-			'   user_agent: %s\n' ..	-- no NLS
-			'       silent: %s\n' ..	-- no NLS
-			'      verbose: %s' ..	-- no NLS
+		H.printf( '\n' ..
+			'   remote url: %s\n' ..
+			'         file: %s\n' ..
+			'     postData: %s\n' ..
+			'     ipv4only: %s\n' ..
+			'   user_agent: %s\n' ..
+			'       silent: %s\n' ..
+			'      verbose: %s' ..
 			'', url, tostring(file), C:decodeUri(tostring(postData)), tostring(v4), ua, tostring(s), tostring(v))
 	end
 
@@ -83,7 +131,7 @@ dlDebug = true
 		if (ret == 0) then
 			data = C:decodeUri(data)
 			if ((file ~= '') and (data ~= nil)) then
-				local f = io.open(file, 'w+')	-- no NLS
+				local f = io.open(file, 'w+')
 				if f ~= nil then
 					f:write(data)
 					f:close()
@@ -97,49 +145,27 @@ dlDebug = true
 		G.hideInfoBox(box)
 		box = nil
 	end
-	if ret == CURL.OK then
-		if file ~= '' then
-			return box, ret, nil
-		else
-			return box, ret, data
-		end
-	else
-		return     box, ret, data
-	end
-end -- function downloadFileInternal
+	return box, ret, data
+end
 
-function playMovie(url, title, info1, info2, enableMovieInfo)
-	local function muteSleep(mute, wait)
-		local threadFunc = [[
-			local t = ...
-			local P = require 'posix'	-- no NLS
-			print(string.format(">>>>>[muteSleep] set AudioMute to %s, wait %d sec", tostring(t._mute), t._wait))	-- no NLS
-			P.sleep(t._wait)
-			M = misc.new()
-			M:AudioMute(t._mute, true)
-			return 1
-		]]
-		local mt = threads.new(threadFunc, {_mute=mute, _wait=wait})
-		mt:start()
-		return mt
-	end -- function muteSleep
-
-	local muteThread
-	if (moviePlayed == false) then
-		volumePlugin = M:getVolume()
-		muteThread = muteSleep(muteStatusPlugin, 1)
-	else
-		M:AudioMute(muteStatusPlugin, true)
-		M:setVolume(volumePlugin)
+function playMovie(url, title, info1, info2, enableMovieInfo, url2)
+	if not url then
+		return nil
 	end
+
+	volumePlugin = M:getVolume()
+	M:AudioMute(muteStatusPlugin, true)
 
 	if enableMovieInfo == true then
-		V:setInfoFunc('movieInfoMP')	-- no NLS
+		V:setInfoFunc('movieInfoMP')
 	end
 
-	url = url .. '?#User-Agent=AppleCoreMedia'
-	local status = V:PlayFile(title, url, info1, info2)
-	if status == PLAYSTATE.LEAVE_ALL then forcePluginExit = true end
+	url2 = url2 or ""
+
+	local status = V:PlayFile(title, url, info1, info2, url2)
+	if status == PLAYSTATE.LEAVE_ALL then
+		forcePluginExit = true
+	end
 
 	muteStatusPlugin = M:isMuted()
 	volumePlugin = M:getVolume()
@@ -147,11 +173,9 @@ function playMovie(url, title, info1, info2, enableMovieInfo)
 	M:enableInfoClock(false)
 
 	V:ShowPicture(backgroundImage)
-	moviePlayed = true
-	if muteThread ~= nil then
-		muteThread:join()
-	end
-end -- function playMovie
+
+	M:AudioMute(false, true)
+end
 
 function downloadMovie(url, channel, title, description, theme, duration, date, time)
 	local function constructXMLFile(channel, title, description, theme, duration, date, time, downloadQuality)
@@ -163,156 +187,150 @@ function downloadMovie(url, channel, title, description, theme, duration, date, 
 				if (c == w) then t = t .. c end
 			end
 			return t
-		end -- function escape
+		end
 		
 		local xml = {}
-		xml[1]	= '<?xml version="1.0" encoding="UTF-8"?>'	-- no NLS
-		xml[2]	= '<neutrino commandversion="1">'	-- no NLS
-		xml[3]	= '	<record command="record">'	-- no NLS
-		xml[4]	= '		<channelname>' .. channel .. '</channelname>'	-- no NLS
-		xml[5]	= '		<epgtitle>' .. title .. '</epgtitle>'	-- no NLS
-		xml[6]	= '		<id>0</id>'	-- no NLS
-		xml[7]	= '		<info1>' .. description .. '</info1>'	-- no NLS
-		xml[8]	= '		<info2>' .. string.format(l.xmlInfo2, theme, downloadQuality, date, time) .. '</info2>'	-- no NLS
-		xml[9]	= '		<epgid>0</epgid>'	-- no NLS
-		xml[10]	= '		<mode>1</mode>'	-- no NLS
-		xml[11]	= '		<videopid>0</videopid>'	-- no NLS
-		xml[12]	= '		<videotype>0</videotype>'	-- no NLS
-		xml[13]	= '		<vtxtpid>0</vtxtpid>'	-- no NLS
-		xml[14]	= '		<genremajor>0</genremajor>'	-- no NLS
-		xml[15]	= '		<genreminor>0</genreminor>'	-- no NLS
-		xml[16]	= '		<seriename></seriename>'	-- no NLS
-		xml[17]	= '		<length>' .. duration .. '</length>'	-- no NLS
-		xml[18]	= '		<productioncountry></productioncountry>'	-- no NLS
-		xml[19]	= '		<productiondate></productiondate>'	-- no NLS
-		xml[20]	= '		<rating>0</rating>'	-- no NLS
-		xml[21]	= '		<quality>' .. downloadQuality .. '</quality>'	-- no NLS
-		xml[22]	= '		<parentallockage>0</parentallockage>'	-- no NLS
-		xml[23]	= '		<dateoflastplay>0</dateoflastplay>'	-- no NLS
-		xml[24]	= '		<bookmark>'	-- no NLS
-		xml[25]	= '			<bookmarkstart>0</bookmarkstart>'	-- no NLS
-		xml[26]	= '			<bookmarkend>0</bookmarkend>'	-- no NLS
-		xml[27]	= '			<bookmarklast>0</bookmarklast>'	-- no NLS
-		xml[28]	= '			<bookmarkuser bookmarkuserpos="0" bookmarkusertype="0" bookmarkusername=""/>'	-- no NLS
-		xml[29]	= '		</bookmark>'	-- no NLS
-		xml[30]	= '	</record>'	-- no NLS
-		xml[31]	= '</neutrino>'	-- no NLS
+		xml[1]	= '<?xml version="1.0" encoding="UTF-8"?>'
+		xml[2]	= '<neutrino commandversion="1">'
+		xml[3]	= '	<record command="record">'
+		xml[4]	= '		<channelname>' .. channel .. '</channelname>'
+		xml[5]	= '		<epgtitle>' .. title .. '</epgtitle>'
+		xml[6]	= '		<id>0</id>'
+		xml[7]	= '		<info1>' .. description .. '</info1>'
+		xml[8]	= '		<info2>' .. string.format(l.xmlInfo2, theme, downloadQuality, date, time) .. '</info2>'
+		xml[9]	= '		<epgid>0</epgid>'
+		xml[10]	= '		<mode>1</mode>'
+		xml[11]	= '		<videopid>0</videopid>'
+		xml[12]	= '		<videotype>0</videotype>'
+		xml[13]	= '		<vtxtpid>0</vtxtpid>'
+		xml[14]	= '		<genremajor>0</genremajor>'
+		xml[15]	= '		<genreminor>0</genreminor>'
+		xml[16]	= '		<seriename></seriename>'
+		xml[17]	= '		<length>' .. duration .. '</length>'
+		xml[18]	= '		<productioncountry></productioncountry>'
+		xml[19]	= '		<productiondate></productiondate>'
+		xml[20]	= '		<rating>0</rating>'
+		xml[21]	= '		<quality>' .. downloadQuality .. '</quality>'
+		xml[22]	= '		<parentallockage>0</parentallockage>'
+		xml[23]	= '		<dateoflastplay>0</dateoflastplay>'
+		xml[24]	= '		<bookmark>'
+		xml[25]	= '			<bookmarkstart>0</bookmarkstart>'
+		xml[26]	= '			<bookmarkend>0</bookmarkend>'
+		xml[27]	= '			<bookmarklast>0</bookmarklast>'
+		xml[28]	= '			<bookmarkuser bookmarkuserpos="0" bookmarkusertype="0" bookmarkusername=""/>'
+		xml[29]	= '		</bookmark>'
+		xml[30]	= '	</record>'
+		xml[31]	= '</neutrino>'
 
 		local s = ''
 		for i=1, #xml do
-			s = s .. escape(xml[i], '\'') .. string.char(10)	-- NL
+			s = s .. escape(xml[i], '\'') .. string.char(10)
 		end
 		return s
-	end -- function constructXMLFile
-
-	local function muteSleep(mute, wait)
-		local threadFunc = [[
-			local t = ...
-			local P = require 'posix'	-- no NLS
-			print(string.format(">>>>>[muteSleep] set AudioMute to %s, wait %d sec", tostring(t._mute), t._wait))	-- no NLS
-			P.sleep(t._wait)
-			M = misc.new()
-			M:AudioMute(t._mute, true)
-			return 1
-		]]
-		local mt = threads.new(threadFunc, {_mute=mute, _wait=wait})
-		mt:start()
-		return mt
-	end -- function muteSleep
+	end
 
 	local function validName(s)
 		local t = ''
 		for i=1, #s do
 			local r = string.sub(s, i, i)
-			if ((r >= 'A' and r <= 'Z') or	-- no NLS
-				(r >= 'a' and r <= 'z') or	-- no NLS
-				(r >= '0' and r <= '9') or	-- no NLS
-				r == '.' or r == ',' or r == ':' or r == ';' or	-- no NLS
---				r == '-' or r == '(' or r == ')' or r == '?' or r == '!') then	-- no NLS
-				r == '-' or r == '?' or r == '!') then	-- no NLS -- () removed, because download problems [BP]
+			if ((r >= 'A' and r <= 'Z') or
+				(r >= 'a' and r <= 'z') or
+				(r >= '0' and r <= '9') or
+				r == '.' or r == ',' or r == ':' or r == ';' or
+				r == '-' or r == '?' or r == '!') then -- () removed, because download problems [BP]
 				t = t .. r
 			else
-				t = t .. '_'	-- no NLS
+				t = t .. '_'
 			end
 		end
 		return t
-	end -- function validName
-
-	local muteThread
-	if (moviePlayed == false) then
-		volumePlugin = M:getVolume()
-		muteThread = muteSleep(muteStatusPlugin, 1)
-	else
-		M:AudioMute(muteStatusPlugin, true)
-		M:setVolume(volumePlugin)
 	end
 
 	if (conf.downloadPath ~= '/') then
-		if (string.sub(url, -4) == '.mp4') then	-- no NLS
-			local date4Name = string.sub(date, 7, 10) .. string.sub(date, 4, 5) .. string.sub(date, 1, 2)
-			local time4Name = string.sub(time, 1,  2) .. string.sub(time, 4, 5) .. '00'	-- no NLS
-			local filePathNameWOExt = conf.downloadPath .. '/' .. validName(channel) .. '_' .. validName(title) .. '_' .. date4Name .. '_' .. time4Name	-- no NLS
-			local fileMP4 = '"' .. filePathNameWOExt .. '.mp4"'	-- no NLS
-			local fileXML = '"' .. filePathNameWOExt .. '.xml"'	-- no NLS
-			local info1 = l.statusDLStarted
-			local info2 = string.format(l.statusDLWhat, channel, title, description, theme, duration, date, time, conf.downloadQuality, fileMP4, url)
-			paintInfoBoxAndWait(info1, info2, conf.guiTimeMsg)
-			local durationInMinutes = tostring(tonumber(string.sub(duration, 1, 2)) * 60 + tonumber(string.sub(duration, 4, 5)) + 1)
-			local tagsXML = constructXMLFile(channel, title, description, theme, durationInMinutes, date, time, conf.downloadQuality)
-			os.execute('echo \'' .. tagsXML .. '\' > ' .. fileXML)
-			local wgetCMD = 'wget --continue --no-check-certificate --user-agent=' .. user_agent2 .. ' -O \"' .. fileMP4 .. '\"  \"' .. url .. '\"'	-- no NLS
-			os.execute(wgetCMD)
-		elseif  (string.sub(url, -5) == '.m3u8') then	-- no NLS
-			local bmproc = assert(io.popen("cat /proc/stb/info/model"))
-			local boxmodel = bmproc:read('*line')
-			bmproc:close()
-			local date4Name = string.sub(date, 7, 10) .. string.sub(date, 4, 5) .. string.sub(date, 1, 2)
-			local time4Name = string.sub(time, 1,  2) .. string.sub(time, 4, 5) .. '00'	-- no NLS
-			local filePathNameWOExt = conf.downloadPath .. '/' .. validName(channel) .. '_' .. validName(title) .. '_' .. date4Name .. '_' .. time4Name	-- no NLS
-			local fileMP4 = '"' .. filePathNameWOExt .. '.mp4"'	-- no NLS
-			local fileXML = '"' .. filePathNameWOExt .. '.xml"'	-- no NLS
-			local info1 = l.statusDLStarted
-			local info2 = string.format(l.statusDLWhat, channel, title, description, theme, duration, date, time, conf.downloadQuality, fileMP4, url)
-			paintInfoBoxAndWait(info1, info2, conf.guiTimeMsg)
-			local durationInMinutes = tostring(tonumber(string.sub(duration, 1, 2)) * 60 + tonumber(string.sub(duration, 4, 5)) + 1)
-			local tagsXML = constructXMLFile(channel, title, description, theme, durationInMinutes, date, time, conf.downloadQuality)
-			os.execute('echo \'' .. tagsXML .. '\' > ' .. fileXML)
-			local wgetCMD = ""
-			if boxmodel == "ufs910" or boxmodel == "ufs922" then
-				wgetCMD = 'ffmpeg -y -user-agent \"Mozilla/5.0\" -i \"' .. url.. '\" -bsf:a aac_adtstoasc -vcodec copy -c copy \"' .. fileMP4 .. '\"'
+		local format_ext = 'mp4'
+		local download_cmd = ""
+		local fileMP4 = ""
+		local filePathNameWOExt = ""
+		local info1 = ""
+		local info2 = ""
+		if (string.sub(url, -4) == '.mp4') or (string.sub(url, -5) == '.m3u8') then
+			local DLtool = url:match("%.mp4$") and "wget" or "ffmpeg"
+			local DLbin = H.which(DLtool)
+			if DLbin == "" then
+				local warn1 = string.format(l.statusDLTool, DLtool)
+				local warn2 = l.statusDLNotFound
+				paintInfoBoxAndWait(warn1, warn2, 3)
 			else
-				wgetCMD = 'ffmpeg -y -user_agent \"Mozilla/5.0\" -i \"' .. url.. '\" -bsf:a aac_adtstoasc -vcodec copy -c copy \"' .. fileMP4 .. '\"'
+				local date4Name = string.sub(date, 7, 10) .. string.sub(date, 4, 5) .. string.sub(date, 1, 2)
+				local time4Name = string.sub(time, 1,  2) .. string.sub(time, 4, 5) .. '00'
+				filePathNameWOExt = conf.downloadPath .. '/' .. validName(channel) .. '_' .. validName(title) .. '_' .. date4Name .. '_' .. time4Name
+				fileMP4 = '"' .. filePathNameWOExt .. '.mp4"'
+				local fileXML = '"' .. filePathNameWOExt .. '.xml"'
+				info1 = l.statusDLStarted
+				info2 = string.format(l.statusDLWhat, channel, title, description, theme, duration, date, time, conf.downloadQuality, fileMP4, url, DLtool)
+				local durationInMinutes = tostring(tonumber(string.sub(duration, 1, 2)) * 60 + tonumber(string.sub(duration, 4, 5)) + 1)
+				local tagsXML = constructXMLFile(channel, title, description, theme, durationInMinutes, date, time, conf.downloadQuality)
+				os.execute('echo \'' .. tagsXML .. '\' > ' .. fileXML)
+				if (string.sub(url, -4) == '.mp4') then
+					if (is_BB_wget() == true) then
+						download_cmd = 'wget -c --no-check-certificate -U ' .. user_agent2 .. ' -O ' .. fileMP4 .. ' ' .. url
+					else
+						download_cmd = 'wget --continue --no-check-certificate --user-agent=' .. user_agent2 .. ' -O ' .. fileMP4 .. ' ' .. url
+					end
+				elseif (string.sub(url, -5) == '.m3u8') then
+					local cur_major, cur_minor, cur_patch = getLibavformatVersion()
+					if isFFmpegGreater(cur_major, cur_minor, cur_patch, 58, 8, 99) then
+						download_cmd = 'ffmpeg -y -user_agent \"Mozilla/5.0\" -i ' .. url.. ' -bsf:a aac_adtstoasc -vcodec copy -c copy ' .. fileMP4
+					else
+						download_cmd = 'ffmpeg -y -user-agent \"Mozilla/5.0\" -i ' .. url.. ' -bsf:a aac_adtstoasc -vcodec copy -c copy ' .. fileMP4
+					end
+				end
 			end
-			os.execute(wgetCMD)
 		else
 			paintAnInfoBoxAndWait(l.statusDLNot, WHERE.CENTER, conf.guiTimeMsg)
+		end
+
+		if (download_cmd ~= "") then
+			local loopback = '127.0.0.1'
+			local file_id = generate_sid(16)
+			local encoded_title = url_encode(title)
+			local dl_sh  = "/tmp/.mediathek_dl_" .. file_id .. ".sh"
+			local script=io.open(dl_sh, "w")
+			script:write('echo "download start" ;\n')
+			script:write(download_cmd .. "\n")
+			script:write('if [ $? -eq 0 ]; then \n')
+			script:write('sleep 2 ;\n')
+			if format_ext == 'mp4' then
+				script:write('mv -f ' .. filePathNameWOExt .. '.' .. format_ext .. ' ' .. filePathNameWOExt .. '.ts\n')
+			end
+			script:write('wget -q ' .. loopback .. '/control/message?popup="Video \\"' .. encoded_title .. '\\" wurde heruntergeladen." -O /dev/null &\n')
+			script:write('echo "download success" ;\n')
+			script:write('else \n')
+			script:write('wget -q ' .. loopback .. '/control/message?popup="Download \\"' .. encoded_title .. '\\" FEHLGESCHLAGEN" -O /dev/null &\n')
+			script:write('echo "download failed" ;\n')
+			script:write('fi \n')
+			script:write('rm ' .. dl_sh .. ' ; \n')
+			script:close()
+			os.execute('sh  ' .. dl_sh .. ' &')
+			paintInfoBoxAndWait(info1, info2, conf.guiTimeMsg)
 		end
 	else
 		paintAnInfoBoxAndWait(string.format(l.statusDLNoPath, conf.downloadPath), WHERE.CENTER, conf.guiTimeMsg)
 		local info1 = l.statusDLSpace
-		local info2 = runACommand('df | grep Filesystem ; df -m | grep /dev/')	-- no NLS
+		local info2 = runACommand('df | grep Filesystem ; df -m | grep /dev/')
 		paintInfoBoxAndWait(info1, info2, conf.guiTimeMsg)
 	end
 
-	muteStatusPlugin = M:isMuted()
-	volumePlugin = M:getVolume()
-	M:enableMuteIcon(false)
-	M:enableInfoClock(false)
-
 	V:ShowPicture(backgroundImage)
-	moviePlayed = true
-	if muteThread ~= nil then
-		muteThread:join()
-	end
-end -- function downloadMovie
+end
 
 function debugPrint(msg)
-	print('[' .. pluginName .. '] ' .. msg)	-- no NLS
-end -- function debugPrint
+	print('[' .. pluginName .. '] ' .. msg)
+end
 
 function debugPrintf(...)
-	print('[' .. pluginName .. '] ' .. string.format(...))-- no NLS
-end -- function debugPrintf
+	print('[' .. pluginName .. '] ' .. string.format(...))
+end
 
 function mtInfoBox(hdr, w, h)
 	local dx, dy
@@ -324,10 +342,10 @@ function mtInfoBox(hdr, w, h)
 	local y = ((SCREEN.END_Y - SCREEN.OFF_Y) - dy) / 2
 	if x < 0 then x = 0 end
 	if y < 0 then y = 0 end
-	local ib = cwindow.new{x=x, y=y, dx=dx, dy=dy, title=hdr, btnRed=l.btnBeenden, icon="information", has_shadow=true, shadow_mode=1, show_footer=true}	-- no NLS
+	local ib = cwindow.new{x=x, y=y, dx=dx, dy=dy, title=hdr, btnRed=l.btnBeenden, icon="information", has_shadow=true, shadow_mode=1, show_footer=true}
 	ib:paint()
 	return ib
-end -- function mtInfoBox
+end
 
 function autoLineBreak(str, len, font)
 	if (not str) then return nil end
@@ -336,7 +354,7 @@ function autoLineBreak(str, len, font)
 
 	local function checkLen(str, font)
 		return N:getRenderWidth(useDynFont, font, str)
-	end -- function checkLen
+	end
 
 	local ret = {}
 	local w = checkLen(str, font)
@@ -365,14 +383,14 @@ function autoLineBreak(str, len, font)
 		end
 	end
 	return ret
-end -- function autoLineBreak
+end
 
 function adjustStringLen(str, len, font)
 	local w = N:getRenderWidth(useDynFont, font, str)
 	if (w <= len) then
 		return str
 	else
-		local z = '...'	-- no NLS
+		local z = '...'
 		local wz = N:getRenderWidth(useDynFont, font, z)
 		if (len <= 2*wz) then return str end
 		str = string.sub(str, 1, #str-2)
@@ -382,63 +400,61 @@ function adjustStringLen(str, len, font)
 		end
 		return str .. z
 	end
-end -- function adjustStringLen
+end
 
 function createCacheFileName(url, ext)
 	local d = V:createChannelIDfromUrl(url)
-	d = string.gsub(d, 'ffffffff', '')	-- no NLS
-	return pluginTmpPath .. '/data_' .. d .. '.' .. ext	-- no NLS
-end -- function createCacheFileName
+	d = string.gsub(d, 'ffffffff', '')
+	return pluginTmpPath .. '/data_' .. d .. '.' .. ext
+end
 
 -- url_decode/url_encode code from: http://lua-users.org/wiki/StringRecipes
 function url_decode(str)
-	str = string.gsub (str, '+', ' ')	-- no NLS
-	str = string.gsub (str, '%%(%x%x)',	-- no NLS
+	str = string.gsub (str, '+', ' ')
+	str = string.gsub (str, '%%(%x%x)',
 		function(h) return string.char(tonumber(h,16)) end)
-	str = string.gsub (str, '\r\n', '\n')	-- no NLS
+	str = string.gsub (str, '\r\n', '\n')
 	return str
-end -- function url_decode
+end
 
 function url_encode(str)
-	if (str) then
-		str = string.gsub (str, '\n', '\r\n')	-- no NLS
-		str = string.gsub (str, '([^%w %-%_%.%~])',	-- no NLS
-			function (c) return string.format ('%%%02X', string.byte(c)) end)	-- no NLS
-		str = string.gsub (str, ' ', '+')	-- no NLS
-	end
-	return str
-end -- function url_encode
+    -- Ersetze jedes Zeichen durch seinen Prozent-codierten Wert
+    str = string.gsub(str, "([^%w%-%.%_])", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end)
+    return str
+end
 
 function decodeImage(b64Data, imgTyp, path)
 	local tmpImg = os.tmpname()
 	local retImg
 	if path ~= nil then
-		retImg = string.gsub(tmpImg, '/tmp/', path .. '/') .. '.' .. imgTyp	-- no NLS
+		retImg = string.gsub(tmpImg, '/tmp/', path .. '/') .. '.' .. imgTyp
 	else
-		retImg = tmpImg .. '.' .. imgTyp	-- no NLS
+		retImg = tmpImg .. '.' .. imgTyp
 	end
 	os.remove(tmpImg)
-	local f = io.open(retImg, 'w+')	-- no NLS
+	local f = io.open(retImg, 'w+')
 	if f ~= nil then
 		f:write(H.base64Dec(b64Data))
 		f:close()
 	else
-		print('Create image [' .. retImg .. '] failed.')	-- no NLS
+		print('Create image [' .. retImg .. '] failed.')
 		return ''
 	end
 	return retImg
-end -- function decodeImage
+end
 
 function saveFullScreen()
 	return N:saveScreen(0, 0, SCREEN.X_RES, SCREEN.Y_RES)
-end -- function saveFullScreen
+end
 
 function restoreFullScreen(screen, del)
 	N:restoreScreen(0, 0, SCREEN.X_RES, SCREEN.Y_RES, screen, del)
-end -- function restoreFullScreen
+end
 
 function setFonts()
-	if (useDynFont == false) then error('Failed to create fonts.') end	-- no NLS
+	if (useDynFont == false) then error('Failed to create fonts.') end
 	local fontError = 0
 	if (fontMainMenu == nil) then
 		fontMainMenu, fontError = N:getDynFont(0, N:scale2Res(conf.guiMainMenuSize))
@@ -456,85 +472,82 @@ function setFonts()
 		fontLeftMenu2, fontError = N:getDynFont(0, N:scale2Res(26), '', DYNFONT.STYLE_BOLD)
 		fontLeftMenu2_h = N:FontHeight(useDynFont, fontLeftMenu2)
 	end
-end -- function setFonts
+end
 
 function paintInfoBox(txt1, txt2)
-	local tmp1_h = math.floor(fontLeftMenu1_h+N:scale2Res(4))
-	local tmp2_h = math.floor(fontLeftMenu2_h+N:scale2Res(4))
+	local tmp1_h = math.floor(fontLeftMenu1_h + N:scale2Res(4))
+	local tmp2_h = math.floor(fontLeftMenu2_h + N:scale2Res(4))
 
 	local crCount2 = 0
-	for i=1, #txt2 do
-		if string.sub(txt2, i, i) == '\n' then	-- no NLS
+	for i = 1, #txt2 do
+		if string.sub(txt2, i, i) == '\n' then
 			crCount2 = crCount2 + 1
 		end
 	end
 
 	crCount2 = crCount2 + 1
-	txt2 = txt2 .. '\n'	-- no NLS
+	txt2 = txt2 .. '\n'
 
 	local _txt = txt2
 	local maxLen = 0
-	for i=1, crCount2 do
-		local s, e = string.find(_txt, '\n')	-- no NLS
---		paintAnInfoBoxAndWait("s: " .. s .. " e: " .. e, WHERE.CENTER, 3)
+	for i = 1, crCount2 do
+		local s, e = string.find(_txt, '\n')
 		if s ~= nil then
 			local txt = string.sub(_txt, 1, s - 1)
 			_txt = string.sub(_txt, e + 1)
---			paintAnInfoBoxAndWait("Teil: " .. txt, WHERE.CENTER, 3)
 			local len = N:getRenderWidth(useDynFont, fontLeftMenu2, txt)
-			if (len > maxLen) then maxLen = len end
+			if len > maxLen then maxLen = len end
 		end
 	end
-	if (maxLen > SCREEN.END_X - SCREEN.OFF_X) then maxLen = SCREEN.END_X - SCREEN.OFF_X - 20 end
 
-	local centerX = math.floor((SCREEN.END_X - SCREEN.OFF_X) / 2)
-	local centerY = math.floor((SCREEN.END_Y - SCREEN.OFF_Y) / 2)
+	local screenWidth = SCREEN.END_X - SCREEN.OFF_X
+	local margin = 15 -- Abstand links und rechts
+	local boxWidth = screenWidth - 2 * margin -- Box-Breite mit symmetrischem Abstand
 
-	local startX = math.floor(centerX - (maxLen/2))
-	local startY = math.floor(centerY - (((crCount2*tmp2_h) + tmp1_h)/2))
-	local dx = maxLen + 10
-	local dy = (crCount2*tmp2_h) + tmp1_h + 10
+	if maxLen > boxWidth - 30 then maxLen = boxWidth - 30 end
 
---paintAnInfoBoxAndWait("tmp1_h: " .. tmp1_h, WHERE.CENTER, 3)
-	G.paintSimpleFrame(startX-5, startY-5, dx, dy, COL.FRAME, COL.BACKGROUND)
-	local ib = paintEmptyInfoBox(startX-5, startY-5, dx, dy)
+	local boxHeight = (crCount2 * tmp2_h) + tmp1_h + 10
+	local startX = SCREEN.OFF_X + margin
+	local startY = math.floor((SCREEN.END_Y - SCREEN.OFF_Y) / 2 - boxHeight / 2)
 
-	local _x = startX
-	local _y = startY
+	local ib = paintEmptyInfoBox(startX, startY, boxWidth, boxHeight)
+	G.paintSimpleFrame(startX, startY, boxWidth - 1, boxHeight - 1, COL.FRAME_PLUS_0)
+
+	local _x = startX + 15
+	local _y = startY + tmp1_h
 	local widthX = N:getRenderWidth(useDynFont, fontLeftMenu1, txt1)
-	_y = _y + tmp1_h
-	N:RenderString(useDynFont, fontLeftMenu1, txt1, _x+5, _y+5, COL.MENUCONTENT_TEXT, widthX, tmp1_h, 0)
+	N:RenderString(useDynFont, fontLeftMenu1, txt1, _x, _y, COL.MENUCONTENT_TEXT, widthX, tmp1_h, 0)
 
 	_txt = txt2
-	for i=1, crCount2 do
-		local s, e = string.find(_txt, '\n')	-- no NLS
---		paintAnInfoBoxAndWait("s: " .. s .. " e: " .. e, WHERE.CENTER, 3)
+	_y = _y + tmp1_h
+	for i = 1, crCount2 do
+		local s, e = string.find(_txt, '\n')
 		if s ~= nil then
 			local txt = string.sub(_txt, 1, s - 1)
 			_txt = string.sub(_txt, e + 1)
---			paintAnInfoBoxAndWait("Teil: " .. txt, WHERE.CENTER, 3)
 			local widthX = N:getRenderWidth(useDynFont, fontLeftMenu2, txt)
-			if (widthX > maxLen) then
-				while N:getRenderWidth(useDynFont, fontLeftMenu2, txt) > maxLen-8 do
-					txt = string.sub(txt, 1 , -2)
+			if widthX > maxLen then
+				while N:getRenderWidth(useDynFont, fontLeftMenu2, txt) > maxLen - 12 do
+					txt = string.sub(txt, 1, -2)
 				end
-				txt = txt .. "..."	-- no NLS
+				txt = txt .. "..."
 				widthX = N:getRenderWidth(useDynFont, fontLeftMenu2, txt)
 			end
-			local _x = math.floor(centerX - (widthX/2))
+			local _x = math.floor((startX + boxWidth / 2) - (widthX / 2))
+			N:RenderString(useDynFont, fontLeftMenu2, txt, _x, _y, COL.MENUCONTENT_TEXT, widthX, tmp2_h, 0)
 			_y = _y + tmp2_h
-			N:RenderString(useDynFont, fontLeftMenu2, txt, _x, _y+5, COL.MENUCONTENT_TEXT, widthX, tmp2_h, 0)
 		end
 	end
+
 	return ib
-end -- function paintInfoBox
+end
 
 function paintInfoBoxAndWait(txt1, txt2, sec)
 	local box = paintInfoBox(txt1, txt2)
-	local P = require 'posix'	-- no NLS
+	local P = require 'posix'
 	P.sleep(sec)
 	G.hideInfoBox(box)
-end -- function paintInfoBoxAndWait
+end
 
 function paintAnInfoBox(txt, where)
 	local _w = N:getRenderWidth(useDynFont, fontMiniInfo, txt)
@@ -552,14 +565,14 @@ function paintAnInfoBox(txt, where)
 	local ib = paintEmptyInfoBox(x, y, dx, dy)
 	N:RenderString(useDynFont, fontMiniInfo, txt, x, y+dy, COL.MENUCONTENTSELECTED_TEXT, dx, dy, 1)
 	return ib
-end -- function paintAnInfoBox
+end
 
 function paintAnInfoBoxAndWait(txt, where, sec)
 	local box = paintAnInfoBox(txt, where)
-	local P = require 'posix'	-- no NLS
+	local P = require 'posix'
 	P.sleep(sec)
 	G.hideInfoBox(box)
-end -- function paintAnInfoBoxAndWait
+end
 
 function paintTopRightInfoBox(txt)
 	local _w = N:getRenderWidth(useDynFont, fontMiniInfo, txt)
@@ -571,14 +584,14 @@ function paintTopRightInfoBox(txt)
 	local ib = paintEmptyInfoBox(x, y, dx, dy)
 	N:RenderString(useDynFont, fontMiniInfo, txt, x, y+dy, COL.YELLOW, dx, dy, 1)
 	return ib
-end -- function paintTopRightInfoBox
+end
 
 function paintTopRightInfoBoxAndWait(txt, sec)
 	local box = paintTopRightInfoBox(txt)
-	local P = require 'posix'	-- no NLS
+	local P = require 'posix'
 	P.sleep(sec)
 	G.hideInfoBox(box)
-end -- function paintTopRightInfoBoxAndWait
+end
 
 function paintEmptyInfoBox(x, y, w, h)
 	local dx, dy
@@ -597,43 +610,98 @@ function paintEmptyInfoBox(x, y, w, h)
 	local ib = cwindow.new{color_body=body, x=x, y=y, dx=dx, dy=dy, has_shadow=true, shadow_mode=1, show_footer=false, show_header=false}
 	ib:paint()
 	return ib
-end -- function paintEmptyInfoBox
+end
 
 menuRet = nil -- global return value
 
 function key_home(a)
 	menuRet = MENU_RETURN.EXIT
 	return menuRet
-end -- function key_home
+end
 
 function key_setup(a)
 	ret = MENU_RETURN.EXIT_ALL
 	return menuRet
-end -- function key_setup
+end
 
 function hideMenu(menu)
 	if menu ~= nil then menu:hide() end
-end -- function hideMenu
+end
 
 function getSendDataHead(mode)
 	local ret = {}
-	ret['software']	= softwareSig	-- no NLS
+	ret['software']	= softwareSig
 	if (pluginVersionBeta == 0) then
-		ret['isBeta'] = false	-- no NLS
+		ret['isBeta'] = false
 	else
-		ret['isBeta'] = true	-- no NLS
+		ret['isBeta'] = true
 	end
-	ret['vBeta']	= pluginVersionBeta	-- no NLS
-	ret['vMajor']	= pluginVersionMajor	-- no NLS
-	ret['vMinor']	= pluginVersionMinor	-- no NLS
-	ret['mode']	= mode			-- no NLS
+	ret['vBeta']	= pluginVersionBeta
+	ret['vMajor']	= pluginVersionMajor
+	ret['vMinor']	= pluginVersionMinor
+	if pluginVersionPatch ~= nil then
+		ret['vPatch'] = pluginVersionPatch
+	end
+	ret['mode']	= mode		
 
 	return ret
-end -- function getSendDataHead
+end
 
 function runACommand(cmd)
 	local handle = io.popen(cmd)
-	local result = handle:read("*a")	-- no NLS
+	local result = handle:read("*a")
 	handle:close()
 	return result
-end -- function runACommand
+end
+
+function getLibavformatVersion()
+	local paths = {"/usr/lib", "/lib"}
+	for _, dir in ipairs(paths) do
+		local pipe = io.popen("ls -l " .. dir .. "/libavformat.so* 2>/dev/null")
+		if pipe then
+			for line in pipe:lines() do
+				local major, minor, patch = line:match("libavformat.so%.(%d+)%.(%d+)%.(%d+)$")
+				if major ~= nil then
+						pipe:close()
+						return major, minor, patch
+				end
+			end
+			pipe:close()
+		end
+	end
+	return nil, nil, nil
+end
+
+function isFFmpegGreater(cur_major, cur_minor, cur_patch, major, minor, patch)
+	if tonumber(cur_major) ~= major then
+		return tonumber(cur_major) > major
+	end
+	if tonumber(cur_minor) ~= minor then
+		return tonumber(cur_minor) > minor
+	end
+	return tonumber(cur_patch) > patch
+end
+
+function is_BB_wget()
+	local handle = io.popen("which wget 2>/dev/null")
+	local wget_path = handle:read("*a"):gsub("%s+", "")
+	handle:close()
+
+	if wget_path == "" then
+		return nil
+	end
+
+	-- Check if the file is a symbolic link
+	handle = io.popen("ls -l " .. wget_path .. " 2>/dev/null")
+	local ls_output = handle:read("*a"):lower()
+	handle:close()
+
+	if ls_output:match("->") then
+		-- It's a symlink, check if it links to BusyBox
+		if ls_output:match("busybox") then
+			return true
+		end
+	end
+
+	return false
+end

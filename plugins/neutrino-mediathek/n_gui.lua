@@ -20,7 +20,7 @@
 	Boston, MA  02110-1301, USA.
 ]]
 
-local VERSION = 20160102.01
+local VERSION = 20200923.01
 
 --[[
 load the modul:
@@ -29,16 +29,30 @@ local gui = require "n_gui"
 
 functions:
 ----------
+modulName()
+checkModulVersion(version)
 paintMiniInfoBox(txt, [w], [h])
 paintInfoBox(txt, [w], [h])
 hideInfoBox(h)
-modulName()
 paintFrame(x, y, w, h, f, c, [radius], [bg])
 paintSimpleFrame(x, y, w, h, c, [bg])
 ]]
 
 local gui = {VERSION = VERSION}
 local G = gui
+local bor = bit and bit.bor
+	or bit32 and bit32.bor
+	or load[[return function(a, b) return a | b end]]()
+
+function G.modulName()
+	return "n_gui"
+end
+
+function G.checkModulVersion(version)
+	if version > VERSION then
+		error(string.format("\nModul '%s' version >= %.02f is required, existing version is %.02f", G.modulName(), version, VERSION))
+	end
+end
 
 function G.paintMiniInfoBox(txt, w, h)
 	local dx, dy
@@ -86,20 +100,7 @@ function G.hideInfoBox(h)
 	end
 end
 
-function G.modulName()
-	return "n_gui"
-end
-
-function G.checkModulVersion(version)
-	if version > VERSION then
-		error(string.format("\nModul '%s' version >= %.02f is required, existing version is %.02f", G.modulName(), version, VERSION))
-	end
-end
-
 function G.paintFrame(x, y, w, h, f, c, radius, bg)
-	local bor = bit and bit.bor
-		or bit32 and bit32.bor
-		or load[[return function(a, b) return a | b end]]()
 	if N == nil then N = n end
 	if (not radius) then radius = CORNER.RADIUS_LARGE end
 	if (not bg) then bg = 0 end
