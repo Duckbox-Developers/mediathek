@@ -58,7 +58,7 @@ function initVars()
 		return nil
 	end
 
-	local rawVersion = readVersionFile(pluginScriptPath .. '/VERSION') or readVersionFromGit() or '1.0.0-dev'
+	local rawVersion = readVersionFile(pluginScriptPath .. '/VERSION') or readVersionFromGit() or '1.1.1'
 	local major, minor, patch, suffix = rawVersion:match('^v?(%d+)%.(%d+)%.(%d+)(.*)$')
 	if not major then
 		major, minor, patch, suffix = '1', '0', '0', '-dev'
@@ -188,6 +188,7 @@ function initVars()
 	mainMenuEntry = {}
 	fillMainMenuEntry(l.key.ok,	l.startMediathek,	iconRef('iconOk'))
 	fillMainMenuEntry(l.key.red,	l.startLivestreams,	iconRef('btnRed'))
+	fillMainMenuEntry(l.key.green,	l.menuLocalRecordings,	iconRef('btnGreen'))
 	fillMainMenuEntry(l.key.menu,	l.settings,		iconRef('iconMenu'))
 	fillMainMenuEntry(l.key.info,	l.versioninfo,	iconRef('iconInfo'))
 	fillMainMenuEntry(l.empty,	l.empty,		nil)

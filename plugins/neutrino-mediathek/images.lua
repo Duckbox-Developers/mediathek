@@ -62,10 +62,10 @@ function createImages()
 		btn7		= resolveIcon('7.png')
 		btn8		= resolveIcon('8.png')
 		btn9		= resolveIcon('9.png')
-		btnRed		= resolveIcon('btn_red.png')
-		btnGreen	= resolveIcon('btn_green.png')
-		btnYellow	= resolveIcon('btn_yellow.png')
 		btnBlue		= resolveIcon('btn_blue.png')
+		btnGreen	= resolveIcon('btn_green.png')
+		btnRed		= resolveIcon('btn_red.png')
+		btnYellow	= resolveIcon('btn_yellow.png')
 
 		local function pickIcon(candidates)
 			for _, name in ipairs(candidates) do
