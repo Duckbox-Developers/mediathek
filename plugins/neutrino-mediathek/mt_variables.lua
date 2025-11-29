@@ -58,7 +58,7 @@ function initVars()
 		return nil
 	end
 
-	local rawVersion = readVersionFile(pluginScriptPath .. '/VERSION') or readVersionFromGit() or '1.1.1'
+	local rawVersion = readVersionFile(pluginScriptPath .. '/VERSION') or readVersionFromGit() or 'v1.3.0'
 	local major, minor, patch, suffix = rawVersion:match('^v?(%d+)%.(%d+)%.(%d+)(.*)$')
 	if not major then
 		major, minor, patch, suffix = '1', '0', '0', '-dev'
@@ -109,11 +109,9 @@ function initVars()
 	forcePluginExit	= false
 --	Curl		= nil
 
-	url_base_b	= 'http://mediathek.slknet.de'
-	url_base_4	= 'http://mediathek4.slknet.de'
-	url_base	= url_base_b
 	url_new_default	= detectDefaultApiBase()
 	url_new		= url_new_default
+	apiCandidates	= {url_new_default}
 
 	conf		= {}
 	conf.livestream	= {}
