@@ -84,7 +84,7 @@ local function readLocalRecordingMetadata(tsPath, pre)
 	end
 
 	local xmlPaths = { tsPath .. '.xml' }
-	if tsPath:sub(-3):lower() == '.ts' then
+	if tsPath:sub(-3):lower() == '.ts' or tsPath:sub(-3):lower() == '.mp4' or tsPath:sub(-3):lower() == '.mkv' then
 		table.insert(xmlPaths, tsPath:sub(1, -4) .. '.xml')
 	end
 

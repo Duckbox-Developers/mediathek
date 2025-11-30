@@ -331,9 +331,9 @@ function downloadMovie(url, channel, title, description, theme, duration, date, 
 			script:write(download_cmd .. "\n")
 			script:write('if [ $? -eq 0 ]; then \n')
 			script:write('sleep 2 ;\n')
-			if format_ext == 'mp4' then
-				script:write('mv -f ' .. filePathNameWOExt .. '.' .. format_ext .. ' ' .. filePathNameWOExt .. '.ts\n')
-			end
+--			if format_ext == 'mp4' then
+--				script:write('mv -f ' .. filePathNameWOExt .. '.' .. format_ext .. ' ' .. filePathNameWOExt .. '.ts\n')
+--			end
 			script:write('wget -q ' .. loopback .. '/control/message?popup="Video \\"' .. encoded_title .. '\\" wurde heruntergeladen." -O /dev/null &\n')
 			script:write('echo "download success" ;\n')
 			script:write('else \n')
