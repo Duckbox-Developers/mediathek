@@ -58,7 +58,7 @@ function initVars()
 		return nil
 	end
 
-	local rawVersion = readVersionFile(pluginScriptPath .. '/VERSION') or readVersionFromGit() or 'v1.3.0'
+	local rawVersion = readVersionFile(pluginScriptPath .. '/VERSION') or readVersionFromGit() or 'v1.3.1'
 	local major, minor, patch, suffix = rawVersion:match('^v?(%d+)%.(%d+)%.(%d+)(.*)$')
 	if not major then
 		major, minor, patch, suffix = '1', '0', '0', '-dev'

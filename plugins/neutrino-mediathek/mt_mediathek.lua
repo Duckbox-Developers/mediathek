@@ -39,6 +39,9 @@ local requiresFullBuffer = Filters.requiresFullBuffer
 local matchesSearchFilters = Filters.matchesSearchFilters
 local entryMatchesFilters = Filters.entryMatchesFilters
 
+-- TODO: Accessibility filter is applied both when buffering (mtBuffer) and when paging (mtList);
+-- consider consolidating to a single pass to reduce work and keep totals consistent.
+
 local function getCachePaths()
 	local configPath = (CONF_PATH or '/var/tuxbox/config/') .. H.scriptBase() .. '_local_recordings.json'
 	local tmpPath = pluginTmpPath .. '/local_recordings.json'
@@ -95,11 +98,11 @@ local function readLocalRecordingMetadata(tsPath, pre)
 				local content = fh:read('*a')
 				fh:close()
 				if content then
-					metadata.title = trim(content:match('<epgtitle>(.-)</epgtitle>'))
-					metadata.channel = trim(content:match('<channelname>(.-)</channelname>'))
-					metadata.description = trim(content:match('<info1>(.-)</info1>'))
+					metadata.title = decodeHtmlEntities(trim(content:match('<epgtitle>(.-)</epgtitle>')))
+					metadata.channel = decodeHtmlEntities(trim(content:match('<channelname>(.-)</channelname>')))
+					metadata.description = decodeHtmlEntities(trim(content:match('<info1>(.-)</info1>')))
 					local info2 = content:match('<info2>(.-)</info2>')
-					metadata.theme = trim(parseThemeFromInfo(info2))
+					metadata.theme = decodeHtmlEntities(trim(parseThemeFromInfo(info2)))
 					local length = trim(content:match('<length>(.-)</length>'))
 					metadata.durationSec = parseDurationString(length)
 				end
@@ -160,25 +163,57 @@ local function parseFindLine(line)
 	}
 end
 
+local findSupportsPrintfFlag = nil
+local function findSupportsPrintf()
+	if findSupportsPrintfFlag ~= nil then
+		return findSupportsPrintfFlag
+	end
+	-- Try a minimal find command; success means printf is supported
+	local ok = os.execute("find /dev/null -maxdepth 0 -printf '' >/dev/null 2>&1")
+	findSupportsPrintfFlag = (ok == true or ok == 0)
+	return findSupportsPrintfFlag
+end
+
 collectRecordingMeta = function(basePath, out)
 	if not directoryExists(basePath) then
 		H.printf("[neutrino-mediathek] collectRecordingMeta: basePath missing %s", tostring(basePath))
 		return false
 	end
 
-	local findCmd = string.format([[
-		find %s -path '*/lost+found' -prune -o -type f \
-			\( -iname '*.ts' -o -iname '*.mp4' -o -iname '*.mkv' \) \
-			-printf '%%p|%%s|%%T@\\n' 2>/dev/null
-	]], string.format('%q', basePath))
+	local usePrintf = findSupportsPrintf()
+	local findCmd
+	if usePrintf then
+		findCmd = string.format([[
+			find %s -path '*/lost+found' -prune -o -type f \
+				\( -iname '*.ts' -o -iname '*.mp4' -o -iname '*.mkv' \) \
+				-printf '%%p|%%s|%%T@\\n' 2>/dev/null
+		]], string.format('%q', basePath))
+	else
+		-- BusyBox find fallback without -printf
+		findCmd = string.format([[
+			find %s -path '*/lost+found' -prune -o -type f \
+				\( -iname '*.ts' -o -iname '*.mp4' -o -iname '*.mkv' \) \
+				-print 2>/dev/null
+		]], string.format('%q', basePath))
+	end
+
 	local pipe = io.popen(findCmd)
 	local usedFastPath = false
 	if pipe then
 		for line in pipe:lines() do
-			local meta = parseFindLine(line)
-			if meta and meta.path then
-				table.insert(out, meta)
+			local meta = nil
+			if usePrintf then
+				meta = parseFindLine(line)
+			else
+				-- only path available, stat in Lua
+				if line and line ~= '' then
+					local size, mtime = getFileAttributes(line)
+					if size and mtime then
+						meta = {path=line, size=size, mtime=mtime}
+					end
+				end
 			end
+			if meta and meta.path then table.insert(out, meta) end
 			usedFastPath = true
 		end
 		pipe:close()
@@ -488,8 +523,10 @@ function paintMtRightMenu()
 		local actentries = 0
 		local maxentries = 999999
 		local noDataOverall = false
+		local progress = createProgressWindow(l.searchTitleInfoMsg)
 
 		while (actentries < maxentries) do
+			local displayStart = start
 			local sendData = getSendDataHead(queryMode_listVideos)
 			el['limit'] = limit
 			el['start'] = start
@@ -505,58 +542,64 @@ function paintMtRightMenu()
 				if s then break end
 			end
 			if not s then
-				G.hideInfoBox(box)
+				if progress then progress:close() end
 				messagebox.exec{title=pluginName, text=l.networkError, buttons={'ok'}}
 				return false
 			end
 --	H.printf("\nretData:\n%s\n", tostring(s))
 
-			local endentries = actentries+limit-1
-			if (endentries > maxentries) then
-				endentries = maxentries
-			end
-			local totalentries = maxentries
-			if (totalentries == 999999) then
-				totalentries = l.searchTitleInfoAll
-			end
-			local box = paintAnInfoBox(string.format(l.searchTitleInfoMsg, actentries, endentries, tostring(totalentries)), WHERE.CENTER)
 				local j_table = {}
-			j_table, err = decodeJson(s)
-			if (j_table == nil) then
-				G.hideInfoBox(box)
-				messagebox.exec{title=pluginName, text=l.jsonError, buttons={'ok'}}
-				os.execute('rm -f ' .. dataFile)
-				return false
-			end
-			local noData = false
-			if checkJsonError(j_table) == false then
-				os.execute('rm -f ' .. dataFile)
-				if (j_table.err ~= 2) then
+				j_table, err = decodeJson(s)
+				if (j_table == nil) then
+					if progress then progress:close() end
+					messagebox.exec{title=pluginName, text=l.jsonError, buttons={'ok'}}
+					os.execute('rm -f ' .. dataFile)
 					return false
 				end
-				noData = true
-			end
+				local noData = false
+				if checkJsonError(j_table) == false then
+					os.execute('rm -f ' .. dataFile)
+					if (j_table.err ~= 2) then
+						if progress then progress:close() end
+						return false
+					end
+					noData = true
+				end
 
-			if (noData == true) then
-				noDataOverall = true
-				maxentries = 0
-			else
-				for i=1, #j_table.entry do
-					if matchesSearchFilters(j_table.entry[i]) then
-						local entry = buildEntry(j_table.entry[i])
-						if entryMatchesFilters(entry) then
-							mtBuffer[j] = entry
-							j = j + 1
+				if (noData == true) then
+					noDataOverall = true
+					maxentries = 0
+				else
+					for i=1, #j_table.entry do
+						if matchesSearchFilters(j_table.entry[i]) then
+							local entry = buildEntry(j_table.entry[i])
+							if entryMatchesFilters(entry) then
+								mtBuffer[j] = entry
+								j = j + 1
+							end
 						end
 					end
+					start = start + limit
+					maxentries = j_table.head.total
+					actentries = actentries + limit
 				end
-				start = start + limit
-				maxentries = j_table.head.total
-				actentries = actentries + limit
-			end
-			G.hideInfoBox(box)
-		end -- while
-		j = j - 1
+
+				local totalentries = maxentries
+				if (totalentries == 999999) then
+					totalentries = l.searchTitleInfoAll
+				end
+				local endentries = displayStart+limit-1
+				if (endentries > maxentries) then
+					endentries = maxentries
+				end
+				if progress then
+					local current = (maxentries > 0) and math.min(actentries, maxentries) or actentries
+					local maxForBar = (maxentries > 0) and maxentries or math.max(current, 1)
+					progress:update(current, maxForBar, string.format(l.searchTitleInfoMsg, displayStart, endentries, tostring(totalentries)))
+				end
+			end -- while
+			if progress then progress:close() end
+			j = j - 1
 			if conf.hideAccessibilityHints == 'on' then
 				mtBuffer = filterAccessibilityVariants(mtBuffer)
 			end
@@ -695,6 +738,10 @@ function paintMtRightMenu()
 		el['start'] = start
 
 		local limit = mtRightMenu_count
+		-- when filtering (z. B. Accessibility-Hints), more items help to fill the page
+		if conf.hideAccessibilityHints == 'on' then
+			limit = mtRightMenu_count * 2
+		end
 		el['limit'] = limit
 
 		local refTime = 0
@@ -744,9 +791,23 @@ function paintMtRightMenu()
 				mtList[i] = buildEntry(j_table.entry[i])
 			end
 			-- Remove accessibility-marked duplicates when a normal variant exists
-				if conf.hideAccessibilityHints == 'on' then
-					mtList = filterAccessibilityVariants(mtList)
+			if conf.hideAccessibilityHints == 'on' then
+				local before = #mtList
+				mtList = filterAccessibilityVariants(mtList)
+				local removed = before - #mtList
+				if removed > 0 then
+					-- Adjust total/maximum page if we dropped entries on this page
+					local remaining_estimate = 0
+					if j_table.head and j_table.head.total then
+						local served = mtRightMenu_list_start + before
+						local total = j_table.head.total
+						if served < total then
+							remaining_estimate = total - served
+						end
+					end
+					mtRightMenu_list_total = mtRightMenu_list_start + #mtList + remaining_estimate
 				end
+			end
 		end
 	else -- Use buffered list (search results or advanced filters)
 		if (selectionChanged == true) then
@@ -790,6 +851,7 @@ function paintMtRightMenu()
 	for i=1, mtRightMenu_count do
 		paint_mtItemLine(i)
 	end
+	-- TODO: parse_m3u8 is propagated but currently unused; if no longer needed, clean up.
 
 	mtRightMenu_max_page = math.ceil(mtRightMenu_list_total/mtRightMenu_count)
 	paintLeftInfoBox(string.format(l.menuPageOfPage, mtRightMenu_view_page, mtRightMenu_max_page))
@@ -1240,18 +1302,19 @@ end
 
 function scanLocalRecordings()
 	local path = conf.localRecordingsPath or ''
-	local infoBox = paintAnInfoBox(l.localRecordingsScanning, WHERE.CENTER)
+	local progress = createProgressWindow(l.localRecordingsScanning)
+	if progress then progress:update(0, 1, l.localRecordingsScanning) end
 	H.printf("[neutrino-mediathek] scanLocalRecordings: path=%s", tostring(path))
 	if not directoryExists(path) then
-		G.hideInfoBox(infoBox)
+		if progress then progress:close() end
 		return false, string.format(l.localRecordingsPathMissing, path)
 	end
 
 	local metas = {}
 	collectRecordingMeta(path, metas)
 	H.printf("[neutrino-mediathek] scanLocalRecordings: collected %d candidates", #metas)
-	G.hideInfoBox(infoBox)
 	if #metas == 0 then
+		if progress then progress:close() end
 		H.printf("[neutrino-mediathek] scanLocalRecordings: no files found under %s", tostring(path))
 		return false, string.format(l.localRecordingsNoEntries, path)
 	end
@@ -1267,7 +1330,7 @@ function scanLocalRecordings()
 
 	local entries = {}
 	local reused = 0
-	for _, meta in ipairs(metas) do
+	for idx, meta in ipairs(metas) do
 		local cached = previous[meta.path]
 		if cached and cached.fileSize == meta.size and cached.fileMtime == meta.mtime then
 			local copy = cloneEntry(cached)
@@ -1281,9 +1344,13 @@ function scanLocalRecordings()
 				table.insert(entries, recEntry)
 			end
 		end
+		if progress then
+			progress:update(idx, #metas, string.format("%s (%d/%d)", l.localRecordingsScanning, idx, #metas))
+		end
 	end
 
 	if #entries == 0 then
+		if progress then progress:close() end
 		return false, string.format(l.localRecordingsNoEntries, path)
 	end
 
@@ -1295,6 +1362,7 @@ function scanLocalRecordings()
 	mtRightMenu_list_start = 0
 	mtRightMenu_view_page = 1
 	mtRightMenu_select = 1
+	if progress then progress:close() end
 	return true
 end
 
